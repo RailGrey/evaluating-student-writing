@@ -2,3 +2,6 @@
     remote = main
 ['remote "main"']
     url = gdrive://1-5Iq5emY7nrtDRD3g2aRLaZOHZZrpQyR
+    gdrive_client_id = ""
+    gdrive_client_secret = ""
+    gdrive_acknowledge_abuse = true
