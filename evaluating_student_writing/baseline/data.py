@@ -1,0 +1,75 @@
+from pathlib import Path
+
+import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.model_selection import GroupShuffleSplit
+from tqdm import tqdm
+
+from evaluating_student_writing.baseline.utils import (
+    CLASSES,
+    assign_sentence_labels,
+    ensure_nltk_data,
+    split_sentences,
+)
+
+
+def load_essay(essay_id: str, essays_dir: Path) -> str:
+    path = essays_dir / f"{essay_id}.txt"
+    return path.read_text(encoding="utf-8")
+
+
+def build_sentence_dataset(csv_path: Path, essays_dir: Path) -> pd.DataFrame:
+    ensure_nltk_data()
+    df = pd.read_csv(csv_path)
+    essays_by_id = {}
+    annotations_by_id: dict[str, list[dict]] = {}
+
+    for _, row in df.iterrows():
+        eid = row["id"]
+        if eid not in annotations_by_id:
+            annotations_by_id[eid] = []
+        annotations_by_id[eid].append(
+            {
+                "discourse_start": int(row["discourse_start"]),
+                "discourse_end": int(row["discourse_end"]),
+                "discourse_type": row["discourse_type"],
+            }
+        )
+
+    records = []
+    for eid in tqdm(annotations_by_id, desc="Processing essays"):
+        essay_text = load_essay(eid, essays_dir)
+        sentences = split_sentences(essay_text)
+        labels = assign_sentence_labels(essay_text, sentences, annotations_by_id[eid])
+        for sent_text, label in zip(sentences, labels):
+            records.append({"id": eid, "sentence_text": sent_text, "label": label})
+        essays_by_id[eid] = essay_text
+
+    return pd.DataFrame(records)
+
+
+def split_dataset(
+    df: pd.DataFrame, test_size: float = 0.2, random_state: int = 42
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    splitter = GroupShuffleSplit(
+        n_splits=1, test_size=test_size, random_state=random_state
+    )
+    train_idx, val_idx = next(splitter.split(df, groups=df["id"]))
+    return df.iloc[train_idx].reset_index(drop=True), df.iloc[val_idx].reset_index(
+        drop=True
+    )
+
+
+def build_tfidf(
+    train_texts: pd.Series,
+    val_texts: pd.Series,
+    max_features: int = 20000,
+) -> tuple[TfidfVectorizer, pd.DataFrame, pd.DataFrame]:
+    vectorizer = TfidfVectorizer(
+        max_features=max_features,
+        ngram_range=(1, 2),
+        sublinear_tf=True,
+    )
+    X_train = vectorizer.fit_transform(train_texts)
+    X_val = vectorizer.transform(val_texts)
+    return vectorizer, X_train, X_val

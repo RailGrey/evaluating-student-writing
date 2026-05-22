@@ -220,3 +220,6 @@ __marimo__/
 
 # Agents
 AGENTS.md
+
+# Model artifacts
+models/
