@@ -3,6 +3,7 @@ from pathlib import Path
 
 import joblib
 import pandas as pd
+from omegaconf import DictConfig
 from xgboost import XGBClassifier
 
 from evaluating_student_writing.baseline.data import (
@@ -12,9 +13,6 @@ from evaluating_student_writing.baseline.data import (
 )
 from evaluating_student_writing.baseline.utils import CLASSES, merge_segments
 from metrics import evaluate
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-MODEL_DIR = PROJECT_ROOT / "models" / "baseline"
 
 
 def _val_to_submission(
@@ -41,23 +39,35 @@ def _val_to_submission(
     return pd.DataFrame(rows, columns=["id", "class", "predictionstring"])
 
 
-def train() -> None:
-    MODEL_DIR.mkdir(parents=True, exist_ok=True)
+def train(cfg: DictConfig) -> None:
+    model_dir = Path(cfg.paths.model_dir)
+    model_dir.mkdir(parents=True, exist_ok=True)
 
-    csv_path = PROJECT_ROOT / "data" / "train.csv"
-    essays_dir = PROJECT_ROOT / "data" / "train"
+    csv_path = Path(cfg.paths.train_csv)
+    essays_dir = Path(cfg.paths.train_essays_dir)
 
     print("Building sentence dataset...")
-    df = build_sentence_dataset(csv_path, essays_dir)
+    df = build_sentence_dataset(
+        csv_path, essays_dir, overlap_threshold=cfg.preprocessing.overlap_threshold
+    )
     print(f"Total sentences: {len(df)}")
     print(f"Label distribution:\n{df['label'].value_counts()}")
 
-    train_df, val_df = split_dataset(df)
+    train_df, val_df = split_dataset(
+        df,
+        test_size=cfg.preprocessing.val_size,
+        random_state=cfg.seed,
+    )
     print(f"Train: {len(train_df)}, Val: {len(val_df)}")
 
     print("Building TF-IDF features...")
+    ngram_range = tuple(cfg.features.ngram_range)
     vectorizer, X_train, X_val = build_tfidf(
-        train_df["sentence_text"], val_df["sentence_text"]
+        train_df["sentence_text"],
+        val_df["sentence_text"],
+        max_features=cfg.features.max_features,
+        ngram_range=ngram_range,
+        sublinear_tf=cfg.features.sublinear_tf,
     )
 
     label_to_idx = {label: idx for idx, label in enumerate(CLASSES)}
@@ -67,23 +77,23 @@ def train() -> None:
 
     print("Training XGBoost...")
     model = XGBClassifier(
-        n_estimators=10,
-        max_depth=6,
-        learning_rate=0.1,
-        subsample=0.8,
-        colsample_bytree=0.8,
-        objective="multi:softprob",
-        eval_metric="mlogloss",
+        n_estimators=cfg.model.n_estimators,
+        max_depth=cfg.model.max_depth,
+        learning_rate=cfg.model.learning_rate,
+        subsample=cfg.model.subsample,
+        colsample_bytree=cfg.model.colsample_bytree,
+        objective=cfg.model.objective,
+        eval_metric=cfg.model.eval_metric,
         num_class=len(CLASSES),
-        tree_method="hist",
-        random_state=42,
-        n_jobs=-1,
+        tree_method=cfg.model.tree_method,
+        random_state=cfg.seed,
+        n_jobs=cfg.model.n_jobs,
+        verbose=cfg.model.verbose,
     )
     model.fit(
         X_train,
         y_train,
         eval_set=[(X_val, y_val)],
-        verbose=20,
     )
 
     y_pred = model.predict(X_val)
@@ -103,11 +113,17 @@ def train() -> None:
     metrics_result = evaluate(gt_df, pred_df)
     print(json.dumps(metrics_result, indent=2))
 
-    joblib.dump(model, MODEL_DIR / "xgb_model.joblib")
-    joblib.dump(vectorizer, MODEL_DIR / "tfidf_vectorizer.joblib")
-    joblib.dump(label_to_idx, MODEL_DIR / "label_to_idx.joblib")
-    print(f"\nModel saved to {MODEL_DIR}")
+    joblib.dump(model, model_dir / "xgb_model.joblib")
+    joblib.dump(vectorizer, model_dir / "tfidf_vectorizer.joblib")
+    joblib.dump(label_to_idx, model_dir / "label_to_idx.joblib")
+    print(f"\nModel saved to {model_dir}")
 
 
 if __name__ == "__main__":
-    train()
+    import hydra
+
+    @hydra.main(version_base=None, config_path="../../configs", config_name="config")
+    def _entry(cfg: DictConfig) -> None:
+        train(cfg)
+
+    _entry()

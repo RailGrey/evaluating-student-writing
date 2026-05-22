@@ -1,0 +1,9 @@
+n_estimators: 300
+max_depth: 3
+learning_rate: 0.1
+subsample: 0.8
+colsample_bytree: 0.8
+objective: multi:softprob
+eval_metric: mlogloss
+tree_method: hist
+n_jobs: -1

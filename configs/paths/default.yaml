@@ -1,0 +1,7 @@
+data_dir: data
+train_csv: ${paths.data_dir}/train.csv
+train_essays_dir: ${paths.data_dir}/train
+test_dir: ${paths.data_dir}/test
+output_dir: data
+model_dir: models/baseline
+submission_path: ${paths.output_dir}/submission.csv

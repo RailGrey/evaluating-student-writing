@@ -1,0 +1,8 @@
+defaults:
+  - preprocessing: sentence
+  - features: tfidf
+  - model: xgboost
+  - paths: default
+  - _self_
+
+seed: 42

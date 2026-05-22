@@ -1,0 +1,2 @@
+overlap_threshold: 0.3
+val_size: 0.2

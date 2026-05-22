@@ -3,6 +3,7 @@ from pathlib import Path
 
 import joblib
 import pandas as pd
+from omegaconf import DictConfig
 from tqdm import tqdm
 
 from evaluating_student_writing.baseline.utils import (
@@ -14,26 +15,14 @@ from evaluating_student_writing.baseline.utils import (
 )
 from metrics import evaluate
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-MODEL_DIR = PROJECT_ROOT / "models" / "baseline"
 
+def predict(cfg: DictConfig) -> pd.DataFrame:
+    model_dir = Path(cfg.paths.model_dir)
+    output_path = Path(cfg.paths.submission_path)
+    test_dir = Path(cfg.paths.test_dir)
 
-def predict(
-    test_dir: Path,
-    model_path: Path | None = None,
-    vectorizer_path: Path | None = None,
-    output_path: Path | None = None,
-    gt_csv_path: Path | None = None,
-) -> pd.DataFrame:
-    if model_path is None:
-        model_path = MODEL_DIR / "xgb_model.joblib"
-    if vectorizer_path is None:
-        vectorizer_path = MODEL_DIR / "tfidf_vectorizer.joblib"
-    if output_path is None:
-        output_path = PROJECT_ROOT / "data" / "submission.csv"
-
-    model = joblib.load(model_path)
-    vectorizer = joblib.load(vectorizer_path)
+    model = joblib.load(model_dir / "xgb_model.joblib")
+    vectorizer = joblib.load(model_dir / "tfidf_vectorizer.joblib")
 
     ensure_nltk_data()
     test_files = sorted(test_dir.glob("*.txt"))
@@ -65,11 +54,12 @@ def predict(
             )
 
     submission = pd.DataFrame(rows, columns=["id", "class", "predictionstring"])
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     submission.to_csv(output_path, index=False)
     print(f"Submission saved to {output_path}: {len(submission)} rows")
 
-    if gt_csv_path is not None:
-        gt_all = pd.read_csv(gt_csv_path)
+    if cfg.paths.get("gt_csv_path"):
+        gt_all = pd.read_csv(cfg.paths.gt_csv_path)
         pred_ids = set(submission["id"].unique())
         gt_df = (
             gt_all[gt_all["id"].isin(pred_ids)][
@@ -86,5 +76,10 @@ def predict(
 
 
 if __name__ == "__main__":
-    test_dir = PROJECT_ROOT / "data" / "test"
-    predict(test_dir)
+    import hydra
+
+    @hydra.main(version_base=None, config_path="../../configs", config_name="config")
+    def _entry(cfg: DictConfig) -> None:
+        predict(cfg)
+
+    _entry()

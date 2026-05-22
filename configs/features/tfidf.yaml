@@ -1,0 +1,5 @@
+max_features: 20000
+ngram_range:
+  - 1
+  - 2
+sublinear_tf: true

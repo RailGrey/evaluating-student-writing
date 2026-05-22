@@ -223,3 +223,6 @@ AGENTS.md
 
 # Model artifacts
 models/
+
+# Hydra outputs
+outputs/

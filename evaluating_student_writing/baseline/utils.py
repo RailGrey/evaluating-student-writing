@@ -49,6 +49,7 @@ def assign_sentence_labels(
     essay_text: str,
     sentences: list[str],
     discourse_annotations: list[dict],
+    overlap_threshold: float = 0.3,
 ) -> list[str]:
     word_ranges = word_range_for_text(essay_text)
     sentence_word_ranges: list[tuple[int, int]] = []
@@ -80,7 +81,7 @@ def assign_sentence_labels(
             overlap_end = min(s_end, ann_last_word)
             overlap = overlap_end - overlap_start + 1
             sentence_len = s_end - s_start + 1
-            if overlap >= sentence_len * 0.3:
+            if overlap >= sentence_len * overlap_threshold:
                 labels[i] = ann["discourse_type"]
     return labels
 

@@ -19,7 +19,11 @@ def load_essay(essay_id: str, essays_dir: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def build_sentence_dataset(csv_path: Path, essays_dir: Path) -> pd.DataFrame:
+def build_sentence_dataset(
+    csv_path: Path,
+    essays_dir: Path,
+    overlap_threshold: float = 0.3,
+) -> pd.DataFrame:
     ensure_nltk_data()
     df = pd.read_csv(csv_path)
     essays_by_id = {}
@@ -41,7 +45,9 @@ def build_sentence_dataset(csv_path: Path, essays_dir: Path) -> pd.DataFrame:
     for eid in tqdm(annotations_by_id, desc="Processing essays"):
         essay_text = load_essay(eid, essays_dir)
         sentences = split_sentences(essay_text)
-        labels = assign_sentence_labels(essay_text, sentences, annotations_by_id[eid])
+        labels = assign_sentence_labels(
+            essay_text, sentences, annotations_by_id[eid], overlap_threshold
+        )
         word_ranges = get_sentence_word_ranges(essay_text, sentences)
         for sent_idx, (sent_text, label, wr) in enumerate(
             zip(sentences, labels, word_ranges)
@@ -62,7 +68,7 @@ def build_sentence_dataset(csv_path: Path, essays_dir: Path) -> pd.DataFrame:
 
 
 def split_dataset(
-    df: pd.DataFrame, test_size: float = 0.2, random_state: int = 42
+    df: pd.DataFrame, test_size: float, random_state: int
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     splitter = GroupShuffleSplit(
         n_splits=1, test_size=test_size, random_state=random_state
@@ -76,12 +82,14 @@ def split_dataset(
 def build_tfidf(
     train_texts: pd.Series,
     val_texts: pd.Series,
-    max_features: int = 20000,
+    max_features: int,
+    ngram_range: tuple[int, int],
+    sublinear_tf: bool,
 ) -> tuple[TfidfVectorizer, pd.DataFrame, pd.DataFrame]:
     vectorizer = TfidfVectorizer(
         max_features=max_features,
-        ngram_range=(1, 2),
-        sublinear_tf=True,
+        ngram_range=ngram_range,
+        sublinear_tf=sublinear_tf,
     )
     X_train = vectorizer.fit_transform(train_texts)
     X_val = vectorizer.transform(val_texts)
