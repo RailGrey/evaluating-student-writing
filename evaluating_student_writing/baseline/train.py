@@ -1,7 +1,8 @@
+import json
 from pathlib import Path
 
 import joblib
-from sklearn.metrics import classification_report
+import pandas as pd
 from xgboost import XGBClassifier
 
 from evaluating_student_writing.baseline.data import (
@@ -9,10 +10,35 @@ from evaluating_student_writing.baseline.data import (
     build_tfidf,
     split_dataset,
 )
-from evaluating_student_writing.baseline.utils import CLASSES
+from evaluating_student_writing.baseline.utils import CLASSES, merge_segments
+from metrics import evaluate
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MODEL_DIR = PROJECT_ROOT / "models" / "baseline"
+
+
+def _val_to_submission(
+    val_df: pd.DataFrame, y_pred: pd.Series, idx_to_label: dict[int, str]
+) -> pd.DataFrame:
+    pred_labels = [idx_to_label[int(p)] for p in y_pred]
+    val_df = val_df.copy()
+    val_df["pred_label"] = pred_labels
+
+    rows = []
+    for eid, group in val_df.groupby("id", sort=False):
+        group = group.sort_values("sentence_idx")
+        labels = group["pred_label"].tolist()
+        word_ranges = list(zip(group["word_range_start"], group["word_range_end"]))
+        segments = merge_segments(labels, word_ranges)
+        for seg in segments:
+            rows.append(
+                {
+                    "id": eid,
+                    "class": seg["class"],
+                    "predictionstring": seg["predictionstring"],
+                }
+            )
+    return pd.DataFrame(rows, columns=["id", "class", "predictionstring"])
 
 
 def train() -> None:
@@ -35,6 +61,7 @@ def train() -> None:
     )
 
     label_to_idx = {label: idx for idx, label in enumerate(CLASSES)}
+    idx_to_label = {idx: label for label, idx in label_to_idx.items()}
     y_train = train_df["label"].map(label_to_idx)
     y_val = val_df["label"].map(label_to_idx)
 
@@ -60,8 +87,21 @@ def train() -> None:
     )
 
     y_pred = model.predict(X_val)
-    print("\nValidation Classification Report:")
-    print(classification_report(y_val, y_pred, target_names=CLASSES))
+
+    print("\nConverting validation predictions to submission format...")
+    pred_df = _val_to_submission(val_df, y_pred, idx_to_label)
+
+    gt_all = pd.read_csv(csv_path)
+    val_ids = set(val_df["id"].unique())
+    gt_df = (
+        gt_all[gt_all["id"].isin(val_ids)][["id", "discourse_type", "predictionstring"]]
+        .rename(columns={"discourse_type": "class"})
+        .copy()
+    )
+
+    print("\nEvaluating metrics...")
+    metrics_result = evaluate(gt_df, pred_df)
+    print(json.dumps(metrics_result, indent=2))
 
     joblib.dump(model, MODEL_DIR / "xgb_model.joblib")
     joblib.dump(vectorizer, MODEL_DIR / "tfidf_vectorizer.joblib")

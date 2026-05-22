@@ -9,6 +9,7 @@ from evaluating_student_writing.baseline.utils import (
     CLASSES,
     assign_sentence_labels,
     ensure_nltk_data,
+    get_sentence_word_ranges,
     split_sentences,
 )
 
@@ -41,8 +42,20 @@ def build_sentence_dataset(csv_path: Path, essays_dir: Path) -> pd.DataFrame:
         essay_text = load_essay(eid, essays_dir)
         sentences = split_sentences(essay_text)
         labels = assign_sentence_labels(essay_text, sentences, annotations_by_id[eid])
-        for sent_text, label in zip(sentences, labels):
-            records.append({"id": eid, "sentence_text": sent_text, "label": label})
+        word_ranges = get_sentence_word_ranges(essay_text, sentences)
+        for sent_idx, (sent_text, label, wr) in enumerate(
+            zip(sentences, labels, word_ranges)
+        ):
+            records.append(
+                {
+                    "id": eid,
+                    "sentence_idx": sent_idx,
+                    "sentence_text": sent_text,
+                    "label": label,
+                    "word_range_start": wr[0],
+                    "word_range_end": wr[1],
+                }
+            )
         essays_by_id[eid] = essay_text
 
     return pd.DataFrame(records)

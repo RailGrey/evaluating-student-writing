@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import joblib
@@ -11,6 +12,7 @@ from evaluating_student_writing.baseline.utils import (
     merge_segments,
     split_sentences,
 )
+from metrics import evaluate
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MODEL_DIR = PROJECT_ROOT / "models" / "baseline"
@@ -21,6 +23,7 @@ def predict(
     model_path: Path | None = None,
     vectorizer_path: Path | None = None,
     output_path: Path | None = None,
+    gt_csv_path: Path | None = None,
 ) -> pd.DataFrame:
     if model_path is None:
         model_path = MODEL_DIR / "xgb_model.joblib"
@@ -64,6 +67,21 @@ def predict(
     submission = pd.DataFrame(rows, columns=["id", "class", "predictionstring"])
     submission.to_csv(output_path, index=False)
     print(f"Submission saved to {output_path}: {len(submission)} rows")
+
+    if gt_csv_path is not None:
+        gt_all = pd.read_csv(gt_csv_path)
+        pred_ids = set(submission["id"].unique())
+        gt_df = (
+            gt_all[gt_all["id"].isin(pred_ids)][
+                ["id", "discourse_type", "predictionstring"]
+            ]
+            .rename(columns={"discourse_type": "class"})
+            .copy()
+        )
+        print("\nEvaluating metrics...")
+        metrics_result = evaluate(gt_df, submission)
+        print(json.dumps(metrics_result, indent=2))
+
     return submission
 
 
