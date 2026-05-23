@@ -1,7 +1,8 @@
 defaults:
   - preprocessing: sentence
   - features: tfidf
-  - model: xgboost
+  - model: bigbird
+  - training: ner
   - paths: default
   - _self_
 

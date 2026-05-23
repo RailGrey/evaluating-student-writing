@@ -1,0 +1,14 @@
+max_steps: 10
+batch_size: 4
+num_workers: 2
+max_grad_norm: 10
+learning_rate: 2.5e-5
+lr_decay_steps:
+  - 1000
+  - 2000
+lr_decay_factor: 0.1
+val_interval: 500
+val_size: 0.1
+min_span_length: 8
+accelerator: auto
+devices: 1

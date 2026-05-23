@@ -224,5 +224,9 @@ AGENTS.md
 # Model artifacts
 models/
 
+# Cache
+.cache/
+
 # Hydra outputs
 outputs/
+lightning_logs/
