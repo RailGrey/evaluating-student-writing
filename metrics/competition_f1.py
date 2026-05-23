@@ -41,8 +41,16 @@ def competition_f1(gt_df: pd.DataFrame, pred_df: pd.DataFrame) -> dict:
 
 if __name__ == "__main__":
     import json
+    import logging
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
+    )
+    logger = logging.getLogger(__name__)
 
     gt_df, pred_df = _example_data()
     result = competition_f1(gt_df, pred_df)
-    print("Competition F1 (0.5 overlap threshold):")
-    print(json.dumps(result, indent=2))
+    logger.info(
+        "Competition F1 (0.5 overlap threshold):\n%s", json.dumps(result, indent=2)
+    )

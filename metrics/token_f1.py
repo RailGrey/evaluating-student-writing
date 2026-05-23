@@ -63,8 +63,16 @@ def token_f1(gt_df: pd.DataFrame, pred_df: pd.DataFrame) -> dict:
 
 if __name__ == "__main__":
     import json
+    import logging
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
+    )
+    logger = logging.getLogger(__name__)
 
     gt_df, pred_df = _example_data()
     result = token_f1(gt_df, pred_df)
-    print("Token-level F1 (word-level classification):")
-    print(json.dumps(result, indent=2))
+    logger.info(
+        "Token-level F1 (word-level classification):\n%s", json.dumps(result, indent=2)
+    )

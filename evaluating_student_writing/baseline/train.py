@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 
 import joblib
@@ -13,6 +14,8 @@ from evaluating_student_writing.baseline.data import (
 )
 from evaluating_student_writing.baseline.utils import CLASSES, merge_segments
 from metrics import evaluate
+
+logger = logging.getLogger(__name__)
 
 
 def _val_to_submission(
@@ -46,21 +49,21 @@ def train(cfg: DictConfig) -> None:
     csv_path = Path(cfg.paths.train_csv)
     essays_dir = Path(cfg.paths.train_essays_dir)
 
-    print("Building sentence dataset...")
+    logger.info("Building sentence dataset...")
     df = build_sentence_dataset(
         csv_path, essays_dir, overlap_threshold=cfg.preprocessing.overlap_threshold
     )
-    print(f"Total sentences: {len(df)}")
-    print(f"Label distribution:\n{df['label'].value_counts()}")
+    logger.info("Total sentences: %d", len(df))
+    logger.info("Label distribution:\n%s", df["label"].value_counts().to_string())
 
     train_df, val_df = split_dataset(
         df,
         test_size=cfg.preprocessing.val_size,
         random_state=cfg.seed,
     )
-    print(f"Train: {len(train_df)}, Val: {len(val_df)}")
+    logger.info("Train: %d, Val: %d", len(train_df), len(val_df))
 
-    print("Building TF-IDF features...")
+    logger.info("Building TF-IDF features...")
     ngram_range = tuple(cfg.features.ngram_range)
     vectorizer, X_train, X_val = build_tfidf(
         train_df["sentence_text"],
@@ -75,7 +78,7 @@ def train(cfg: DictConfig) -> None:
     y_train = train_df["label"].map(label_to_idx)
     y_val = val_df["label"].map(label_to_idx)
 
-    print("Training XGBoost...")
+    logger.info("Training XGBoost...")
     model = XGBClassifier(
         n_estimators=cfg.model.n_estimators,
         max_depth=cfg.model.max_depth,
@@ -88,7 +91,6 @@ def train(cfg: DictConfig) -> None:
         tree_method=cfg.model.tree_method,
         random_state=cfg.seed,
         n_jobs=cfg.model.n_jobs,
-        verbose=cfg.model.verbose,
     )
     model.fit(
         X_train,
@@ -98,7 +100,7 @@ def train(cfg: DictConfig) -> None:
 
     y_pred = model.predict(X_val)
 
-    print("\nConverting validation predictions to submission format...")
+    logger.info("Converting validation predictions to submission format...")
     pred_df = _val_to_submission(val_df, y_pred, idx_to_label)
 
     gt_all = pd.read_csv(csv_path)
@@ -109,17 +111,24 @@ def train(cfg: DictConfig) -> None:
         .copy()
     )
 
-    print("\nEvaluating metrics...")
+    logger.info("Evaluating metrics...")
     metrics_result = evaluate(gt_df, pred_df)
-    print(json.dumps(metrics_result, indent=2))
+    logger.info("Metrics result:\n%s", json.dumps(metrics_result, indent=2))
 
     joblib.dump(model, model_dir / "xgb_model.joblib")
     joblib.dump(vectorizer, model_dir / "tfidf_vectorizer.joblib")
     joblib.dump(label_to_idx, model_dir / "label_to_idx.joblib")
-    print(f"\nModel saved to {model_dir}")
+    logger.info("Model saved to %s", model_dir)
 
 
 if __name__ == "__main__":
+    import logging
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
+    )
+
     import hydra
 
     @hydra.main(version_base=None, config_path="../../configs", config_name="config")

@@ -46,8 +46,17 @@ def span_jaccard_iou(gt_df: pd.DataFrame, pred_df: pd.DataFrame) -> dict:
 
 if __name__ == "__main__":
     import json
+    import logging
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
+    )
+    logger = logging.getLogger(__name__)
 
     gt_df, pred_df = _example_data()
     result = span_jaccard_iou(gt_df, pred_df)
-    print("Span Jaccard IoU (overlap quality of matched pairs):")
-    print(json.dumps(result, indent=2))
+    logger.info(
+        "Span Jaccard IoU (overlap quality of matched pairs):\n%s",
+        json.dumps(result, indent=2),
+    )

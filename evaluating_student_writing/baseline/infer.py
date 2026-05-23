@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 
 import joblib
@@ -15,6 +16,8 @@ from evaluating_student_writing.baseline.utils import (
 )
 from metrics import evaluate
 
+logger = logging.getLogger(__name__)
+
 
 def predict(cfg: DictConfig) -> pd.DataFrame:
     model_dir = Path(cfg.paths.model_dir)
@@ -26,7 +29,7 @@ def predict(cfg: DictConfig) -> pd.DataFrame:
 
     ensure_nltk_data()
     test_files = sorted(test_dir.glob("*.txt"))
-    print(f"Found {len(test_files)} test essays")
+    logger.info("Found %d test essays", len(test_files))
 
     rows = []
     for tf in tqdm(test_files, desc="Predicting essays"):
@@ -56,7 +59,7 @@ def predict(cfg: DictConfig) -> pd.DataFrame:
     submission = pd.DataFrame(rows, columns=["id", "class", "predictionstring"])
     output_path.parent.mkdir(parents=True, exist_ok=True)
     submission.to_csv(output_path, index=False)
-    print(f"Submission saved to {output_path}: {len(submission)} rows")
+    logger.info("Submission saved to %s: %d rows", output_path, len(submission))
 
     if cfg.paths.get("gt_csv_path"):
         gt_all = pd.read_csv(cfg.paths.gt_csv_path)
@@ -68,14 +71,21 @@ def predict(cfg: DictConfig) -> pd.DataFrame:
             .rename(columns={"discourse_type": "class"})
             .copy()
         )
-        print("\nEvaluating metrics...")
+        logger.info("Evaluating metrics...")
         metrics_result = evaluate(gt_df, submission)
-        print(json.dumps(metrics_result, indent=2))
+        logger.info("Metrics result:\n%s", json.dumps(metrics_result, indent=2))
 
     return submission
 
 
 if __name__ == "__main__":
+    import logging
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
+    )
+
     import hydra
 
     @hydra.main(version_base=None, config_path="../../configs", config_name="config")
