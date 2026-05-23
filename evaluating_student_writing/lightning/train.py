@@ -155,9 +155,9 @@ def _predict_val(
     )
     loader = DataLoader(
         dataset,
-        batch_size=cfg.training.batch_size,
+        batch_size=cfg.training.val_batch_size,
         shuffle=False,
-        num_workers=0,
+        num_workers=2,
         collate_fn=_collate_fn,
     )
 
