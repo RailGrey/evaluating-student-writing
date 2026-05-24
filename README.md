@@ -110,8 +110,8 @@
    - **Оптимизатор**: Adam (AdamW-style от HuggingFace), learning rate = 2.5e-5.
    - **LR scheduler**: MultiStepLR с decay в 0.1x на шагах 1000 и 2000.
    - **Gradient clipping**: max grad norm = 10.0.
-   - **Early stopping**: по val_loss (patience=5, min_delta=0.001).
-   - **Максимум**: 2500 шагов, batch size = 4.
+   - **Gradient clipping**: max grad norm = 10.0.
+   - **Максимум**: 2500 шагов, batch size = 4, валидация каждые 500 шагов.
    - **Мониторинг**: train_loss, val_loss, learning_rate, Competition F1 macro, Token F1 macro, Span Exact Match F1 macro, Span Jaccard IoU.
 
 4. **Постобработка**:
@@ -156,7 +156,8 @@
 ├── .python-version             # Версия Python (3.13)
 ├── .env                        # Переменные окружения (MLflow URI и т.д.)
 ├── .pre-commit-config.yaml     # Конфигурация pre-commit хуков (ruff, формат)
-├── main.py                     # Точка входа Hydra (baseline train)
+├── main.py                     # Единая точка входа для обучения (baseline + lightning)
+├── predict.py                  # Единая точка входа для инференса (baseline + lightning)
 ├── configs/
 │   ├── config.yaml             # Главный конфиг (дефолты)
 │   ├── experiment/
@@ -184,11 +185,12 @@
 │       ├── __init__.py
 │       ├── constants.py        # BIO-метки, LABEL2ID, ID2LABEL
 │       ├── data.py             # EssayDataset, BIO-разметка, загрузка
-│       ├── model.py            # NERLightningModule
-│       ├── train.py            # Тренировка (самостоятельный entry point)
-│       ├── infer.py            # Инференс (самостоятельный entry point)
-│       ├── utils.py            # predictions_to_spans, collate_fn
-│       └── plot_utils.py      # Визуализация train/val loss
+│   ├── model.py            # NERLightningModule
+│   ├── train.py            # Тренировка Lightning (встроенный Hydra)
+│   ├── infer.py            # Инференс Lightning (встроенный Hydra)
+│   ├── utils.py            # predictions_to_spans, collate_fn
+│   ├── report.py           # Генерация markdown-отчёта с цветной разметкой
+│   └── plot_utils.py      # Визуализация train/val loss, метрик
 ├── metrics/                    # Метрики оценки
 │   ├── __init__.py             # evaluate() — общий entry point
 │   ├── base.py                 # _match_group, _build_per_class, aggregate_averages
@@ -250,18 +252,15 @@ dvc pull
 
 ### Baseline: Sentence Classification + XGBoost
 
-**Запуск через `main.py` (Hydra):**
-
 ```bash
 # Обучить baseline с конфигом по умолчанию
-python main.py
+python main.py model=xgboost features=tfidf preprocessing=sentence
 
 # С переопределением параметров через Hydra CLI
 python main.py \
   model=xgboost \
   features=tfidf \
   preprocessing=sentence \
-  training=ner \
   model.n_estimators=500 \
   model.max_depth=6
 ```
@@ -272,26 +271,16 @@ python main.py \
 3. Строит TF-IDF признаки и обучает XGBoost
 4. Сохраняет модель, векторизатор и маппинг меток в `models/baseline/`
 5. Вычисляет метрики на валидации (Competition F1, Token F1 и т.д.)
-
-**Результаты**
-
-| Metric | Macro F1 | Micro F1 |
-|---|---|---|
-| Competition F1 | 0.1682 | 0.1809 |
-| Token F1 | 0.2783 | 0.6023 |
-| Span Exact Match | 0.0812 | 0.0794 |
-| Span Jaccard | 0.8299 | 0.8299 |
+6. Сохраняет метрики в `data/final_results/baseline_metrics.json`
 
 ### Основная модель: Lightning + BigBird (NER)
 
-**Запуск через модуль Lightning (отдельный entry point):**
-
 ```bash
 # Обучить BigBird NER
-python -m evaluating_student_writing.lightning.train
+python main.py model=bigbird features=tokenizer training=ner
 
 # С переопределением конфига
-python -m evaluating_student_writing.lightning.train \
+python main.py \
   model=bigbird \
   features=tokenizer \
   training=ner \
@@ -305,9 +294,9 @@ python -m evaluating_student_writing.lightning.train \
 3. Инициализирует NERLightningModule (BigBird + classification head)
 4. Запускает обучение через PyTorch Lightning Trainer с:
    - MLflow-логированием метрик и параметров
-   - Early stopping по val_loss
    - MultiStepLR scheduler
    - Gradient clipping
+   - Валидация каждые N шагов с расчётом 4 метрик
 5. Сохраняет модель (HuggingFace format) в указанную директорию
 6. Логирует всё в MLflow и генерирует графики train/val loss
 
@@ -357,36 +346,25 @@ python -m evaluating_student_writing.lightning.train \
               └──────────────────────────────┘
 ```
 
-**Результаты**
-
-| Metric | Macro F1 |
-|---|---|
-| Competition F1 | 0.4719
-| Token F1 | 0.5454
-| Span Exact Match | 0.2833
-
 ## **Инференс (Predict)**
 
 ### Baseline (XGBoost)
 
 ```bash
-# Запустить инференс на тестовых данных
-python -m evaluating_student_writing.baseline.infer
-
-# С указанием своего пути к модели
-python -m evaluating_student_writing.baseline.infer \
-  paths.model_dir=models/my_model \
-  paths.test_dir=data/my_test
+python predict.py model=xgboost features=tfidf preprocessing=sentence
 ```
 
 ### Lightning (BigBird NER)
 
 ```bash
 # Запустить инференс
-python -m evaluating_student_writing.lightning.infer
+python predict.py model=bigbird features=tokenizer training=ner
 
 # С переопределением путей
-python -m evaluating_student_writing.lightning.infer \
+python predict.py \
+  model=bigbird \
+  features=tokenizer \
+  training=ner \
   paths.model_dir=models/my_model \
   paths.test_dir=data/my_test \
   paths.submission_path=data/my_submission.csv
