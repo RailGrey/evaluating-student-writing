@@ -15,13 +15,13 @@ def main(cfg: DictConfig) -> None:
     logger.info(OmegaConf.to_yaml(cfg))
 
     if "model_name" in cfg.model:
-        from evaluating_student_writing.lightning.train import train as lightning_train
+        from evaluating_student_writing.lightning.infer import predict
 
-        lightning_train(cfg)
+        predict(cfg)
     elif "n_estimators" in cfg.model or "objective" in cfg.model:
-        from evaluating_student_writing.baseline.train import train as baseline_train
+        from evaluating_student_writing.baseline.infer import predict
 
-        baseline_train(cfg)
+        predict(cfg)
     else:
         raise ValueError(
             "Unknown model config. Use model=xgboost for baseline "

@@ -466,10 +466,10 @@ dvc status
 
 | Команда | Описание |
 |---|---|
-| `python main.py` | Baseline train (XGBoost) |
-| `python -m evaluating_student_writing.baseline.infer` | Baseline predict |
-| `python -m evaluating_student_writing.lightning.train` | Lightning train (BigBird NER) |
-| `python -m evaluating_student_writing.lightning.infer` | Lightning predict |
+| `python main.py model=xgboost features=tfidf` | Baseline train (XGBoost) |
+| `python main.py model=bigbird features=tokenizer` | Lightning train (BigBird NER) |
+| `python predict.py model=xgboost features=tfidf` | Baseline predict |
+| `python predict.py model=bigbird features=tokenizer` | Lightning predict |
 | `mlflow ui` | Запустить MLflow Dashboard |
 | `dvc pull` | Скачать данные |
 | `pre-commit run --all-files` | Запустить pre-commit |
