@@ -230,3 +230,6 @@ models/
 # Hydra outputs
 outputs/
 lightning_logs/
+
+# MLFlow checkpoints
+1/

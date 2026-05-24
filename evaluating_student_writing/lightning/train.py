@@ -1,24 +1,17 @@
-import json
 import logging
-import subprocess
 from pathlib import Path
 
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import mlflow
 import pandas as pd
 import pytorch_lightning as pl
 import torch
 from mlflow.tracking import MlflowClient
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
+from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.loggers import MLFlowLogger as PLMLFlowLogger
 from torch.utils.data import DataLoader
-from tqdm import tqdm
 from transformers import AutoTokenizer
 
-from evaluating_student_writing.lightning.constants import ID2LABEL
 from evaluating_student_writing.lightning.data import (
     EssayDataset,
     load_annotations,
@@ -122,6 +115,14 @@ def train(cfg: DictConfig) -> None:
         run_name=cfg.experiment.run_name,
     )
 
+    early_stop_callback = EarlyStopping(
+        monitor="val_loss",
+        min_delta=cfg.training.early_stopping_callback_delta,
+        patience=cfg.training.early_stopping_callback_patience,
+        verbose=True,
+        mode="min",
+    )
+
     trainer = pl.Trainer(
         max_steps=cfg.training.max_steps,
         accelerator=cfg.training.accelerator,
@@ -131,6 +132,7 @@ def train(cfg: DictConfig) -> None:
         limit_val_batches=cfg.training.limit_val_batches,
         enable_checkpointing=True,
         logger=pl_logger,
+        callbacks=[early_stop_callback],
     )
 
     mlflow.set_tracking_uri(cfg.experiment.tracking_uri)
