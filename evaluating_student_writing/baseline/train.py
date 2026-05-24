@@ -43,6 +43,10 @@ def _val_to_submission(
 
 
 def train(cfg: DictConfig) -> None:
+    from evaluating_student_writing.dvc import ensure_dvc_data
+
+    ensure_dvc_data([cfg.paths.train_csv, cfg.paths.train_essays_dir])
+
     model_dir = Path(cfg.paths.model_dir)
     model_dir.mkdir(parents=True, exist_ok=True)
 

@@ -3,6 +3,8 @@ import logging
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
+from evaluating_student_writing.dvc import ensure_dvc_data
+
 logger = logging.getLogger(__name__)
 
 
@@ -13,6 +15,14 @@ def main(cfg: DictConfig) -> None:
         format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
     )
     logger.info(OmegaConf.to_yaml(cfg))
+
+    ensure_dvc_data(
+        [
+            cfg.paths.train_csv,
+            cfg.paths.train_essays_dir,
+            cfg.paths.model_dir,
+        ]
+    )
 
     if "model_name" in cfg.model:
         from evaluating_student_writing.lightning.train import train as lightning_train

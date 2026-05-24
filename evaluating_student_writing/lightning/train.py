@@ -40,6 +40,10 @@ def train(cfg: DictConfig) -> None:
 
     hf_cache = str(Path(cfg.paths.hf_cache_dir).resolve())
 
+    from evaluating_student_writing.dvc import ensure_dvc_data
+
+    ensure_dvc_data([cfg.paths.train_csv, cfg.paths.train_essays_dir])
+
     tokenizer = AutoTokenizer.from_pretrained(
         cfg.model.model_name, add_prefix_space=True, cache_dir=hf_cache
     )

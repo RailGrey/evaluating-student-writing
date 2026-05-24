@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 
 
 def predict(cfg: DictConfig) -> pd.DataFrame:
+    from evaluating_student_writing.dvc import ensure_dvc_data
+
+    ensure_dvc_data([cfg.paths.model_dir, cfg.paths.test_dir])
+
     model_dir = Path(cfg.paths.model_dir)
     output_path = Path(cfg.paths.submission_path)
     test_dir = Path(cfg.paths.test_dir)

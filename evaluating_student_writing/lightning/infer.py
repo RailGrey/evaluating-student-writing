@@ -28,6 +28,10 @@ def predict(cfg: DictConfig) -> pd.DataFrame:
             "Run with: model=bigbird features=tokenizer"
         )
 
+    from evaluating_student_writing.dvc import ensure_dvc_data
+
+    ensure_dvc_data([cfg.paths.model_dir, cfg.paths.test_dir])
+
     mlflow.set_tracking_uri(cfg.experiment.tracking_uri)
     mlflow.set_experiment(cfg.experiment.experiment_name)
 
