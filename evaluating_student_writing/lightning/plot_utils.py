@@ -27,15 +27,16 @@ def _get_metric_history(
 
 
 def _generate_plots(
-    client: MlflowClient, run_id: str, metrics_result: dict, plots_dir: Path
+    client: MlflowClient, run_id: str, metrics_result: dict | None, plots_dir: Path
 ) -> None:
     plots_dir.mkdir(parents=True, exist_ok=True)
 
     _plot_train_val_loss(client, run_id, plots_dir)
     _plot_learning_rate(client, run_id, plots_dir)
     _plot_metrics_over_val_steps(client, run_id, plots_dir)
-    _plot_competition_f1_per_class(metrics_result, plots_dir)
-    _plot_metrics_overview(metrics_result, plots_dir)
+    if metrics_result is not None:
+        _plot_competition_f1_per_class(metrics_result, plots_dir)
+        _plot_metrics_overview(metrics_result, plots_dir)
 
     for plot_file in sorted(plots_dir.glob("*.png")):
         mlflow.log_artifact(str(plot_file))

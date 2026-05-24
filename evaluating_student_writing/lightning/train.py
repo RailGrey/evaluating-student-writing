@@ -143,20 +143,10 @@ def train(cfg: DictConfig) -> None:
 
         trainer.fit(model, train_loader, val_loader)
 
-        logger.info("Running validation predictions for metrics...")
-        pred_df = _predict_val(model, tokenizer, val_texts, cfg)
-
-        logger.info("Evaluating metrics...")
-        metrics_result = evaluate(val_gt_df, pred_df)
-        logger.info("Metrics result:\n%s", json.dumps(metrics_result, indent=2))
-
-        flat_metrics = _flatten_metrics(metrics_result)
-        mlflow.log_metrics(flat_metrics)
-
         plots_dir = Path(cfg.paths.plots_dir)
         client = MlflowClient(tracking_uri=cfg.experiment.tracking_uri)
         run_id = mlflow.active_run().info.run_id
-        _generate_plots(client, run_id, metrics_result, plots_dir)
+        _generate_plots(client, run_id, None, plots_dir)
 
         model_dir = Path(cfg.paths.model_dir)
         model_dir.mkdir(parents=True, exist_ok=True)
@@ -165,70 +155,6 @@ def train(cfg: DictConfig) -> None:
         tokenizer.save_pretrained(model_path)
         mlflow.log_artifact(str(model_path))
         logger.info("Model saved to %s", model_path)
-
-
-def _predict_val(
-    model: NERLightningModule,
-    tokenizer: AutoTokenizer,
-    texts: dict[str, str],
-    cfg: DictConfig,
-) -> pd.DataFrame:
-    model.eval()
-    device = next(model.parameters()).device
-
-    dataset = EssayDataset(
-        texts=texts,
-        annotations=None,
-        tokenizer=tokenizer,
-        max_length=cfg.features.max_length,
-    )
-    loader = DataLoader(
-        dataset,
-        batch_size=cfg.training.val_batch_size,
-        shuffle=False,
-        num_workers=2,
-        collate_fn=_collate_fn,
-    )
-
-    all_rows = []
-    min_span_length = cfg.training.min_span_length
-
-    with torch.no_grad():
-        for batch in tqdm(loader, desc="Validating"):
-            input_ids = batch["input_ids"].to(device)
-            attention_mask = batch["attention_mask"].to(device)
-
-            logits = model(input_ids=input_ids, attention_mask=attention_mask).logits
-            preds = torch.argmax(logits, dim=-1)
-
-            for i in range(len(batch["essay_id"])):
-                essay_id = batch["essay_id"][i]
-                word_ids_list = batch["word_ids"][i]
-                n_words = batch["n_words"][i]
-                token_preds = preds[i].cpu().tolist()
-
-                word_preds = []
-                previous_word_idx = None
-                for idx, word_idx in enumerate(word_ids_list):
-                    if word_idx is None:
-                        continue
-                    if word_idx != previous_word_idx:
-                        word_preds.append(ID2LABEL[token_preds[idx]])
-                        previous_word_idx = word_idx
-
-                word_preds = word_preds[:n_words]
-                spans = predictions_to_spans(word_preds, min_span_length)
-
-                for span in spans:
-                    all_rows.append(
-                        {
-                            "id": essay_id,
-                            "class": span["class"],
-                            "predictionstring": span["predictionstring"],
-                        }
-                    )
-
-    return pd.DataFrame(all_rows, columns=["id", "class", "predictionstring"])
 
 
 if __name__ == "__main__":
