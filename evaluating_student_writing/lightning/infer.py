@@ -11,6 +11,7 @@ from transformers import AutoConfig, AutoModelForTokenClassification, AutoTokeni
 
 from evaluating_student_writing.lightning.constants import ID2LABEL
 from evaluating_student_writing.lightning.data import EssayDataset, load_essays
+from evaluating_student_writing.lightning.report import generate_report
 from evaluating_student_writing.lightning.utils import (
     _get_git_commit_id,
     predictions_to_spans,
@@ -111,12 +112,25 @@ def predict(cfg: DictConfig) -> pd.DataFrame:
                         )
 
         submission = pd.DataFrame(all_rows, columns=["id", "class", "predictionstring"])
+        output_path = Path(cfg.paths.submission_path)
+        results_dir = Path(cfg.paths.results_dir)
+        results_dir.mkdir(parents=True, exist_ok=True)
+
         output_path.parent.mkdir(parents=True, exist_ok=True)
         submission.to_csv(output_path, index=False)
+        submission.to_csv(results_dir / "submission.csv", index=False)
         logger.info("Submission saved to %s: %d rows", output_path, len(submission))
+        logger.info("Submission also copied to %s/submission.csv", results_dir)
 
         mlflow.log_metric("submission_rows", len(submission))
         mlflow.log_artifact(str(output_path))
+
+        report_path = generate_report(
+            texts=texts,
+            submission=submission,
+            output_dir=Path(cfg.paths.results_dir),
+        )
+        mlflow.log_artifact(str(report_path))
 
         if cfg.paths.get("gt_csv_path"):
             gt_all = pd.read_csv(cfg.paths.gt_csv_path)
@@ -139,6 +153,14 @@ def predict(cfg: DictConfig) -> pd.DataFrame:
                         if isinstance(sub_value, dict) and "f1" in sub_value:
                             flat_metrics[f"{key}/{sub_key}/f1"] = sub_value["f1"]
             mlflow.log_metrics(flat_metrics)
+
+            metrics_report_path = generate_report(
+                texts=texts,
+                submission=submission,
+                output_dir=Path(cfg.paths.results_dir),
+                metrics_result=metrics_result,
+            )
+            mlflow.log_artifact(str(metrics_report_path))
 
     return submission
 
