@@ -1,9 +1,10 @@
 defaults:
   - preprocessing: sentence
-  - features: tfidf
+  - features: tokenizer
   - model: bigbird
   - training: ner
   - paths: default
+  - experiment: mlflow
   - _self_
 
 seed: 42

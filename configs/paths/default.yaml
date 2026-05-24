@@ -5,4 +5,5 @@ test_dir: ${paths.data_dir}/test
 output_dir: data
 model_dir: models/baseline
 submission_path: ${paths.output_dir}/submission.csv
+plots_dir: ${paths.output_dir}/plots
 hf_cache_dir: .cache/huggingface

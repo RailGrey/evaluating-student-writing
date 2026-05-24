@@ -1,11 +1,19 @@
 import json
 import logging
+import subprocess
 from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import mlflow
 import pandas as pd
 import pytorch_lightning as pl
 import torch
-from omegaconf import DictConfig
+from mlflow.tracking import MlflowClient
+from omegaconf import DictConfig, OmegaConf
+from pytorch_lightning.loggers import MLFlowLogger as PLMLFlowLogger
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AutoTokenizer
@@ -18,25 +26,16 @@ from evaluating_student_writing.lightning.data import (
     split_essay_ids,
 )
 from evaluating_student_writing.lightning.model import NERLightningModule
-from evaluating_student_writing.lightning.utils import predictions_to_spans
+from evaluating_student_writing.lightning.plot_utils import _generate_plots
+from evaluating_student_writing.lightning.utils import (
+    _collate_fn,
+    _flatten_metrics,
+    _log_experiment_params,
+    predictions_to_spans,
+)
 from metrics import evaluate
 
 logger = logging.getLogger(__name__)
-
-
-def _collate_fn(batch):
-    keys = batch[0].keys()
-    result = {}
-    for k in keys:
-        if k in ("essay_id", "word_ids", "n_words"):
-            result[k] = [item[k] for item in batch]
-        else:
-            result[k] = torch.stack([item[k] for item in batch])
-    return result
-
-
-def _collate_infer(batch):
-    return _collate_fn(batch)
 
 
 def train(cfg: DictConfig) -> None:
@@ -64,6 +63,13 @@ def train(cfg: DictConfig) -> None:
     train_texts = {eid: texts[eid] for eid in train_ids}
     val_texts = {eid: texts[eid] for eid in val_ids}
 
+    gt_all = pd.read_csv(Path(cfg.paths.train_csv))
+    val_gt_df = (
+        gt_all[gt_all["id"].isin(val_ids)][["id", "discourse_type", "predictionstring"]]
+        .rename(columns={"discourse_type": "class"})
+        .copy()
+    )
+
     train_dataset = EssayDataset(
         texts=train_texts,
         annotations=annotations,
@@ -86,6 +92,7 @@ def train(cfg: DictConfig) -> None:
         num_workers=cfg.training.num_workers,
         pin_memory=True,
         collate_fn=_collate_fn,
+        persistent_workers=True,
     )
     val_loader = DataLoader(
         val_dataset,
@@ -94,6 +101,7 @@ def train(cfg: DictConfig) -> None:
         num_workers=cfg.training.num_workers,
         pin_memory=True,
         collate_fn=_collate_fn,
+        persistent_workers=True,
     )
 
     model = NERLightningModule(
@@ -104,6 +112,14 @@ def train(cfg: DictConfig) -> None:
         lr_decay_factor=cfg.training.lr_decay_factor,
         max_grad_norm=cfg.training.max_grad_norm,
         cache_dir=hf_cache,
+        val_gt_df=val_gt_df,
+        min_span_length=cfg.training.min_span_length,
+    )
+
+    pl_logger = PLMLFlowLogger(
+        experiment_name=cfg.experiment.experiment_name,
+        tracking_uri=cfg.experiment.tracking_uri,
+        run_name=cfg.experiment.run_name,
     )
 
     trainer = pl.Trainer(
@@ -112,30 +128,43 @@ def train(cfg: DictConfig) -> None:
         devices=cfg.training.devices,
         gradient_clip_val=cfg.training.max_grad_norm,
         val_check_interval=cfg.training.val_interval,
+        limit_val_batches=cfg.training.limit_val_batches,
         enable_checkpointing=True,
+        logger=pl_logger,
     )
 
-    trainer.fit(model, train_loader, val_loader)
+    mlflow.set_tracking_uri(cfg.experiment.tracking_uri)
+    mlflow.set_experiment(cfg.experiment.experiment_name)
 
-    logger.info("Running validation predictions for metrics...")
-    pred_df = _predict_val(model, tokenizer, val_texts, cfg)
+    with mlflow.start_run(run_id=pl_logger.run_id if pl_logger.run_id else None):
+        _log_experiment_params(cfg)
+        mlflow.log_param("train_essays", len(train_ids))
+        mlflow.log_param("val_essays", len(val_ids))
 
-    gt_all = pd.read_csv(Path(cfg.paths.train_csv))
-    gt_df = (
-        gt_all[gt_all["id"].isin(val_ids)][["id", "discourse_type", "predictionstring"]]
-        .rename(columns={"discourse_type": "class"})
-        .copy()
-    )
+        trainer.fit(model, train_loader, val_loader)
 
-    logger.info("Evaluating metrics...")
-    metrics_result = evaluate(gt_df, pred_df)
-    logger.info("Metrics result:\n%s", json.dumps(metrics_result, indent=2))
+        logger.info("Running validation predictions for metrics...")
+        pred_df = _predict_val(model, tokenizer, val_texts, cfg)
 
-    model_dir = Path(cfg.paths.model_dir)
-    model_dir.mkdir(parents=True, exist_ok=True)
-    model.model.save_pretrained(model_dir / "bigbird")
-    tokenizer.save_pretrained(model_dir / "bigbird")
-    logger.info("Model saved to %s/bigbird", model_dir)
+        logger.info("Evaluating metrics...")
+        metrics_result = evaluate(val_gt_df, pred_df)
+        logger.info("Metrics result:\n%s", json.dumps(metrics_result, indent=2))
+
+        flat_metrics = _flatten_metrics(metrics_result)
+        mlflow.log_metrics(flat_metrics)
+
+        plots_dir = Path(cfg.paths.plots_dir)
+        client = MlflowClient(tracking_uri=cfg.experiment.tracking_uri)
+        run_id = mlflow.active_run().info.run_id
+        _generate_plots(client, run_id, metrics_result, plots_dir)
+
+        model_dir = Path(cfg.paths.model_dir)
+        model_dir.mkdir(parents=True, exist_ok=True)
+        model_path = model_dir / "bigbird"
+        model.model.save_pretrained(model_path)
+        tokenizer.save_pretrained(model_path)
+        mlflow.log_artifact(str(model_path))
+        logger.info("Model saved to %s", model_path)
 
 
 def _predict_val(
