@@ -5,6 +5,7 @@ defaults:
   - training: ner
   - paths: default
   - experiment: mlflow
+  - export: onnx
   - _self_
 
 seed: 42

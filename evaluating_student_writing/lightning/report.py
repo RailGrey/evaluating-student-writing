@@ -35,9 +35,10 @@ def generate_report(
     submission: pd.DataFrame,
     output_dir: Path,
     metrics_result: dict | None = None,
+    filename: str = "inference_report.md",
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
-    report_path = output_dir / "inference_report.md"
+    report_path = output_dir / filename
 
     lines: list[str] = []
     lines.append("# Inference Report\n")

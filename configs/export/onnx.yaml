@@ -1,0 +1,2 @@
+opset_version: 17
+onnx_filename: bigbird_ner.onnx

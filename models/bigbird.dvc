@@ -1,6 +1,6 @@
 outs:
-- md5: b320ce6d1e2d935564909171ddde710a.dir
-  size: 512425342
-  nfiles: 4
+- md5: 98734e57dad13678647391ab284bb9c3.dir
+  size: 1020199389
+  nfiles: 6
   hash: md5
   path: bigbird

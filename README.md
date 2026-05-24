@@ -110,7 +110,6 @@
    - **Оптимизатор**: Adam (AdamW-style от HuggingFace), learning rate = 2.5e-5.
    - **LR scheduler**: MultiStepLR с decay в 0.1x на шагах 1000 и 2000.
    - **Gradient clipping**: max grad norm = 10.0.
-   - **Gradient clipping**: max grad norm = 10.0.
    - **Максимум**: 2500 шагов, batch size = 4, валидация каждые 500 шагов.
    - **Мониторинг**: train_loss, val_loss, learning_rate, Competition F1 macro, Token F1 macro, Span Exact Match F1 macro, Span Jaccard IoU.
 
@@ -131,17 +130,46 @@
 
 ## **ONNX-экспорт**
 
-Прямой экспорт модели BigBird NER в ONNX невозможен по следующей причине:
+BigBird использует **block-sparse attention** (`attention_type="block_sparse"`), который нельзя напрямую экспортировать в ONNX — стандартный ONNX opset содержит только full attention (O(n²)). Для экспорта используется `attention_type="original_full"`: веса остаются теми же, меняется только паттерн вычисления внимания. Retrain не нужен.
 
-- BigBird использует **block-sparse attention** (`attention_type="block_sparse"`) — механизм с линейной сложностью O(n), позволяющий обрабатывать последовательности до 4096 токенов.
-- ONNX Runtime не поддерживает кастомные операции sparse attention из PyTorch/HuggingFace — стандартный opset ONNX содержит только full attention (BERT-style) с O(n²) сложностью.
+```bash
+# Экспорт модели в ONNX
+python export.py
 
-Пайплайн инференса включает:
-1. **Загрузка модели**: `AutoModelForTokenClassification.from_pretrained()` + `AutoTokenizer.from_pretrained()`.
-2. **Предобработка текста**: токенизация с `is_split_into_words=True`, padding до max_length=1024.
-3. **Предсказание**: forward pass модели в режиме `torch.no_grad()`, argmax по logits.
-4. **Постобработка**: маппинг токенов → слова, объединение в спаны, фильтрация по `min_span_length`.
-5. **Формат вывода**: CSV с колонками `id`, `class`, `predictionstring` — совместимый с Kaggle-сабмишеном.
+# С переопределением параметров
+python export.py export.onnx_filename=my_model.onnx export.opset_version=17
+```
+
+**Что делает скрипт:**
+1. Загружает сохранённую HuggingFace-модель с `attention_type="original_full"`
+2. Создаёт dummy-входы (batch=1, seq=max_length)
+3. Экспортирует через `torch.onnx.export` с динамическими осями (batch, seq)
+4. Сохраняет `.onnx` файл в директорию модели
+
+**Tradeoff:** при `original_full` теряется memory efficiency BigBird (O(n) → O(n²)), но модель полностью совместима с ONNX Runtime.
+
+## **ONNX-инференс**
+
+```bash
+# Инференс через ONNX Runtime
+python predict_onnx.py
+
+# С переопределением путей
+python predict_onnx.py \
+  paths.model_dir=models/bigbird \
+  paths.test_dir=data/test
+```
+
+**Что делает пайплайн:**
+1. Загружает ONNX-модель через `onnxruntime.InferenceSession` (GPU через CUDAExecutionProvider, fallback на CPU)
+2. Токенизирует текст тем же tokenizer'ом
+3. Выполняет forward pass через ONNX Runtime (без PyTorch)
+4. Постобработка: argmax → слова → спаны → submission.csv
+5. Генерирует отчёт и логирует в MLflow
+
+**Зависимости:** `onnxruntime-gpu` (или `onnxruntime` для CPU-only).
+
+Пайплайн инференса (PyTorch и ONNX):
 
 ## **Ресурсы и требования**
 
@@ -149,7 +177,7 @@
 - **Время обучения**: ~30–60 минут на полный прогон (2500 шагов, batch=4).
 - **Оборудование для инференса**: CPU или GPU — модель загружается в полном виде (~1.2 GB), инференс одного эссе занимает <1 секунды на GPU.
 - **Latency**: на GPU <1 с/эссе, на CPU ~2–5 с/эссе.
-- **Формат развёртывания**: CLI-команда через Hydra, поддерживаются baseline и lightning-модели.
+- **Формат развёртывания**: CLI-команда через Hydra, поддерживаются baseline и lightning-модели. Для ONNX-инференса требуется `onnxruntime-gpu` (или `onnxruntime` для CPU-only).
 
 ---
 
@@ -165,6 +193,8 @@
 ├── .pre-commit-config.yaml     # Конфигурация pre-commit хуков (ruff, формат)
 ├── main.py                     # Единая точка входа для обучения (baseline + lightning)
 ├── predict.py                  # Единая точка входа для инференса (baseline + lightning)
+├── export.py                   # Экспорт модели в ONNX
+├── predict_onnx.py             # Инференс через ONNX Runtime
 ├── configs/
 │   ├── config.yaml             # Главный конфиг (дефолты)
 │   ├── experiment/
@@ -181,6 +211,8 @@
 │   │   └── sentence.yaml       # Параметры предобработки (baseline)
 │   └── training/
 │       └── ner.yaml            # Параметры обучения (lightning)
+│   └── export/
+│       └── onnx.yaml           # Параметры ONNX-экспорта
 ├── evaluating_student_writing/ # Пакет проекта
 │   ├── __init__.py
 │   ├── baseline/               # Baseline (XGBoost + TF-IDF)
@@ -197,7 +229,9 @@
 │   ├── infer.py            # Инференс Lightning (встроенный Hydra)
 │   ├── utils.py            # predictions_to_spans, collate_fn
 │   ├── report.py           # Генерация markdown-отчёта с цветной разметкой
-│   └── plot_utils.py      # Визуализация train/val loss, метрик
+│       ├── plot_utils.py      # Визуализация train/val loss, метрик
+│       ├── export.py           # ONNX-экспорт модели
+│       └── infer_onnx.py       # ONNX-инференс
 ├── metrics/                    # Метрики оценки
 │   ├── __init__.py             # evaluate() — общий entry point
 │   ├── base.py                 # _match_group, _build_per_class, aggregate_averages
@@ -471,6 +505,8 @@ dvc status
 | `python main.py model=bigbird features=tokenizer` | Lightning train (BigBird NER) |
 | `python predict.py model=xgboost features=tfidf` | Baseline predict |
 | `python predict.py model=bigbird features=tokenizer` | Lightning predict |
+| `python export.py` | Экспорт модели в ONNX |
+| `python predict_onnx.py` | ONNX-инференс |
 | `mlflow ui` | Запустить MLflow Dashboard |
 | `dvc pull` | Скачать данные |
 | `pre-commit run --all-files` | Запустить pre-commit |
