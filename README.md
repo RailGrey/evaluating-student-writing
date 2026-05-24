@@ -271,7 +271,15 @@ python main.py \
 3. Строит TF-IDF признаки и обучает XGBoost
 4. Сохраняет модель, векторизатор и маппинг меток в `models/baseline/`
 5. Вычисляет метрики на валидации (Competition F1, Token F1 и т.д.)
-6. Сохраняет метрики в `data/final_results/baseline_metrics.json`
+
+**Результаты**
+
+| Metric | Macro F1 | Micro F1 |
+|---|---|---|
+| Competition F1 | 0.1682 | 0.1809 |
+| Token F1 | 0.2783 | 0.6023 |
+| Span Exact Match | 0.0812 | 0.0794 |
+| Span Jaccard | 0.8299 | 0.8299 |
 
 ### Основная модель: Lightning + BigBird (NER)
 
@@ -345,6 +353,14 @@ python main.py \
               │   MLflow logging              │
               └──────────────────────────────┘
 ```
+
+**Результаты**
+
+| Metric | Macro F1 |
+|---|---|
+| Competition F1 | 0.4719
+| Token F1 | 0.5454
+| Span Exact Match | 0.2833
 
 ## **Инференс (Predict)**
 
