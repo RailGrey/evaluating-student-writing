@@ -396,6 +396,17 @@ uv sync --group dev
 pre-commit run --all-files
 ```
 
+### Просмотр отчётов (инференс)
+
+После инференса результаты сохраняются в `data/final_results/`:
+- `submission.csv` — предсказания в формате Kaggle
+- `inference_report.md` — markdown-отчёт с цветной разметкой дискурсных элементов
+
+Для красивого отображения markdown с HTML-форматированием:
+1. Установите расширение [Markdown All in One](https://marketplace.visualstudio.com/items?itemName=yzhang.markdown-all-in-one) для VS Code
+2. Откройте `data/final_results/inference_report.md`
+3. Нажмите **Ctrl+Shift+V** для предпросмотра
+
 ## **Данные**
 
 Управление данными через DVC с Google Drive remote:
