@@ -57,8 +57,13 @@ def predict(cfg: DictConfig) -> pd.DataFrame:
             )
 
     submission = pd.DataFrame(rows, columns=["id", "class", "predictionstring"])
+    output_path = Path(cfg.paths.submission_path)
+    results_dir = Path(cfg.paths.results_dir)
+    results_dir.mkdir(parents=True, exist_ok=True)
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
     submission.to_csv(output_path, index=False)
+    submission.to_csv(results_dir / "baseline_submission.csv", index=False)
     logger.info("Submission saved to %s: %d rows", output_path, len(submission))
 
     if cfg.paths.get("gt_csv_path"):
@@ -74,6 +79,10 @@ def predict(cfg: DictConfig) -> pd.DataFrame:
         logger.info("Evaluating metrics...")
         metrics_result = evaluate(gt_df, submission)
         logger.info("Metrics result:\n%s", json.dumps(metrics_result, indent=2))
+
+        metrics_path = results_dir / "baseline_metrics.json"
+        metrics_path.write_text(json.dumps(metrics_result, indent=2), encoding="utf-8")
+        logger.info("Metrics saved to %s", metrics_path)
 
     return submission
 

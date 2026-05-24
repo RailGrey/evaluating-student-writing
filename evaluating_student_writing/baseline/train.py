@@ -115,6 +115,12 @@ def train(cfg: DictConfig) -> None:
     metrics_result = evaluate(gt_df, pred_df)
     logger.info("Metrics result:\n%s", json.dumps(metrics_result, indent=2))
 
+    results_dir = Path(cfg.paths.results_dir)
+    results_dir.mkdir(parents=True, exist_ok=True)
+    metrics_path = results_dir / "baseline_metrics.json"
+    metrics_path.write_text(json.dumps(metrics_result, indent=2), encoding="utf-8")
+    logger.info("Metrics saved to %s", metrics_path)
+
     joblib.dump(model, model_dir / "xgb_model.joblib")
     joblib.dump(vectorizer, model_dir / "tfidf_vectorizer.joblib")
     joblib.dump(label_to_idx, model_dir / "label_to_idx.joblib")

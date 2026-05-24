@@ -56,6 +56,28 @@
 
 # **Моделирование**
 
+## **Результаты**
+
+### Baseline: Sentence Classification + XGBoost
+
+| Metric | Macro F1 | Micro F1 |
+|---|---|---|
+| Competition F1 | 0.1682 | 0.1809 |
+| Token F1 | 0.2783 | 0.6023 |
+| Span Exact Match | 0.0812 | 0.0794 |
+| Span Jaccard | 0.8299 | 0.8299 |
+
+### Основная модель: BigBird NER
+
+| Metric | Macro F1 | Micro F1 |
+|---|---|---|
+| Competition F1 | TODO | TODO |
+| Token F1 | TODO | TODO |
+| Span Exact Match | TODO | TODO |
+| Span Jaccard | TODO | TODO |
+
+---
+
 ## **Бейзлайн**
 
 В качестве простого бейзлайна задача решается как классификация предложений:
@@ -251,6 +273,15 @@ python main.py \
 4. Сохраняет модель, векторизатор и маппинг меток в `models/baseline/`
 5. Вычисляет метрики на валидации (Competition F1, Token F1 и т.д.)
 
+**Результаты**
+
+| Metric | Macro F1 | Micro F1 |
+|---|---|---|
+| Competition F1 | 0.1682 | 0.1809 |
+| Token F1 | 0.2783 | 0.6023 |
+| Span Exact Match | 0.0812 | 0.0794 |
+| Span Jaccard | 0.8299 | 0.8299 |
+
 ### Основная модель: Lightning + BigBird (NER)
 
 **Запуск через модуль Lightning (отдельный entry point):**
@@ -325,6 +356,14 @@ python -m evaluating_student_writing.lightning.train \
               │   MLflow logging              │
               └──────────────────────────────┘
 ```
+
+**Результаты**
+
+| Metric | Macro F1 |
+|---|---|
+| Competition F1 | 0.4719
+| Token F1 | 0.5454
+| Span Exact Match | 0.2833
 
 ## **Инференс (Predict)**
 

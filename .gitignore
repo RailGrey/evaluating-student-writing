@@ -230,3 +230,6 @@ lightning_logs/
 
 # MLFlow checkpoints
 1/
+
+# General descriptions
+description/
