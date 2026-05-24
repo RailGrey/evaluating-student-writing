@@ -127,7 +127,14 @@
 
 ## **Формат модели и пайплайн инференса**
 
-Финальная модель сохраняется в формате HuggingFace `transformers` (config.json + model.safetensors + tokenizer files) через `model.save_pretrained()`. Этот формат совместим с ONNX-экспортом при необходимости.
+Финальная модель сохраняется в формате HuggingFace `transformers` (config.json + model.safetensors + tokenizer files) через `model.save_pretrained()`.
+
+## **ONNX-экспорт**
+
+Прямой экспорт модели BigBird NER в ONNX невозможен по следующей причине:
+
+- BigBird использует **block-sparse attention** (`attention_type="block_sparse"`) — механизм с линейной сложностью O(n), позволяющий обрабатывать последовательности до 4096 токенов.
+- ONNX Runtime не поддерживает кастомные операции sparse attention из PyTorch/HuggingFace — стандартный opset ONNX содержит только full attention (BERT-style) с O(n²) сложностью.
 
 Пайплайн инференса включает:
 1. **Загрузка модели**: `AutoModelForTokenClassification.from_pretrained()` + `AutoTokenizer.from_pretrained()`.
