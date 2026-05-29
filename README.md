@@ -171,13 +171,83 @@ python predict_onnx.py \
 
 Пайплайн инференса (PyTorch и ONNX):
 
+## **Triton Inference Server**
+
+NVIDIA Triton Inference Server обслуживает ONNX-модель в production-режиме: GPU-ускорение, dynamic batching, HTTP/gRPC API, health checks.
+
+### Архитектура
+
+```
+┌────────────────┐     HTTP :8000      ┌─────────────────────────┐
+│  Python Client │ ──────────────────▶ │  Triton Inference Server │
+│  (tokenize +   │                     │  (ONNX Runtime, GPU)    │
+│   post-process)│ ◀────────────────── │  bigbird_ner model      │
+└────────────────┘     logits          └─────────────────────────┘
+```
+
+- **Сервер** (Docker): загружает ONNX-модель, выполняет forward pass на GPU
+- **Клиент** (Python): токенизация, отправка numpy-массивов, argmax → спаны → submission.csv
+- **Dynamic batching**: Triton автоматически группирует запросы (batch_size 1/2/4/8) для максимальной throughput
+
+### Запуск
+
+```bash
+# 1. Экспортировать модель в ONNX (если ещё не)
+python export.py
+
+# 2. Скопировать ONNX в модель-репозиторий Triton
+mkdir -p triton_server/model_repository/bigbird_ner/1
+cp models/bigbird/bigbird_ner.onnx triton_server/model_repository/bigbird_ner/1/model.onnx
+
+# 3. Запустить Triton (GPU, Docker Compose)
+docker compose -f triton_server/docker-compose.yaml up -d
+
+# 4. Проверить готовность
+curl http://localhost:8000/v2/health/ready
+
+# 5. Запустить клиент инференса
+python predict_triton.py
+
+# 6. Остановить сервер
+docker compose -f triton_server/docker-compose.yaml down
+```
+
+### Конфигурация
+
+Triton-специфичные параметры в `configs/triton/default.yaml`:
+
+```yaml
+url: "localhost:8000"       # HTTP endpoint
+model_name: "bigbird_ner"   # имя модели в репозитории
+protocol: "http"            # http или grpc
+```
+
+Переопределение через CLI:
+```bash
+python predict_triton.py triton.url="192.168.1.100:8000"
+```
+
+### Model Repository
+
+```
+triton_server/
+├── docker-compose.yaml
+└── model_repository/
+    └── bigbird_ner/
+        ├── config.pbtxt        # конфигурация модели (backend, batching, GPU)
+        └── 1/
+            └── model.onnx      # ONNX-файл (gitignored, копируется вручную)
+```
+
+**Зависимости:** Docker + NVIDIA Container Toolkit. Клиент использует только `requests` (уже есть в проекте).
+
 ## **Ресурсы и требования**
 
 - **Оборудование для обучения**: 1 GPU с ≥8 GB VRAM (например, NVIDIA RTX 3070/2080, Tesla T4). BigBird требует больше памяти, чем BERT-base, из-за длины последовательности.
 - **Время обучения**: ~30–60 минут на полный прогон (2500 шагов, batch=4).
 - **Оборудование для инференса**: CPU или GPU — модель загружается в полном виде (~1.2 GB), инференс одного эссе занимает <1 секунды на GPU.
 - **Latency**: на GPU <1 с/эссе, на CPU ~2–5 с/эссе.
-- **Формат развёртывания**: CLI-команда через Hydra, поддерживаются baseline и lightning-модели. Для ONNX-инференса требуется `onnxruntime-gpu` (или `onnxruntime` для CPU-only).
+- **Формат развёртывания**: CLI через Hydra (baseline / lightning), ONNX Runtime, или Triton Inference Server (production).
 
 ---
 
@@ -195,6 +265,7 @@ python predict_onnx.py \
 ├── predict.py                  # Единая точка входа для инференса (baseline + lightning)
 ├── export.py                   # Экспорт модели в ONNX
 ├── predict_onnx.py             # Инференс через ONNX Runtime
+├── predict_triton.py           # Инференс через Triton Inference Server
 ├── configs/
 │   ├── config.yaml             # Главный конфиг (дефолты)
 │   ├── experiment/
@@ -213,6 +284,8 @@ python predict_onnx.py \
 │       └── ner.yaml            # Параметры обучения (lightning)
 │   └── export/
 │       └── onnx.yaml           # Параметры ONNX-экспорта
+│   └── triton/
+│       └── default.yaml        # Параметры Triton (url, model_name)
 ├── evaluating_student_writing/ # Пакет проекта
 │   ├── __init__.py
 │   ├── baseline/               # Baseline (XGBoost + TF-IDF)
@@ -231,7 +304,8 @@ python predict_onnx.py \
 │   ├── report.py           # Генерация markdown-отчёта с цветной разметкой
 │       ├── plot_utils.py      # Визуализация train/val loss, метрик
 │       ├── export.py           # ONNX-экспорт модели
-│       └── infer_onnx.py       # ONNX-инференс
+│       ├── infer_onnx.py       # ONNX-инференс
+│       └── infer_triton.py     # Triton-клиент инференса
 ├── metrics/                    # Метрики оценки
 │   ├── __init__.py             # evaluate() — общий entry point
 │   ├── base.py                 # _match_group, _build_per_class, aggregate_averages
@@ -507,6 +581,7 @@ dvc status
 | `python predict.py model=bigbird features=tokenizer` | Lightning predict |
 | `python export.py` | Экспорт модели в ONNX |
 | `python predict_onnx.py` | ONNX-инференс |
+| `python predict_triton.py` | Triton-инференс |
 | `mlflow ui` | Запустить MLflow Dashboard |
 | `dvc pull` | Скачать данные |
 | `pre-commit run --all-files` | Запустить pre-commit |

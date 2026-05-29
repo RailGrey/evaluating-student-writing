@@ -6,6 +6,7 @@ defaults:
   - paths: default
   - experiment: mlflow
   - export: onnx
+  - triton: default
   - _self_
 
 seed: 42

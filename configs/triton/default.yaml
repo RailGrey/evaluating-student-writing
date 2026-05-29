@@ -1,0 +1,3 @@
+url: "localhost:8000"
+model_name: "bigbird_ner"
+protocol: "http"

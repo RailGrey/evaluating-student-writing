@@ -233,3 +233,6 @@ lightning_logs/
 
 # General descriptions
 description/
+
+# Triton model binaries
+triton_server/model_repository/*/1/
